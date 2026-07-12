@@ -1,4 +1,22 @@
-      <style>@import 'https://fonts.googleapis.com/css?family=Lato:100,100i,300,300i,400,400i,700,700i,900,900i';
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Heart Particle Effect</title>
+
+<!-- Google Font -->
+<link href="https://fonts.googleapis.com/css?family=Lato:100,300,400,700,900" rel="stylesheet">
+
+<!-- jQuery -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+<!-- GSAP TweenMax -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/1.20.3/TweenMax.min.js"></script>
+
+<!-- imagesLoaded -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.imagesloaded/4.1.4/imagesloaded.pkgd.min.js"></script>
+
+<style>
 body,
 html {
     margin: 0;
@@ -8,15 +26,7 @@ html {
     overflow: hidden;
 }
 
-h1,
-h2,
-h3,
-h4,
-h5,
-h6,
-p,
-a,
-li {
+h1, h2, h3, h4, h5, h6, p, a, li {
     margin: 0;
     padding: 0;
 }
@@ -26,10 +36,6 @@ li {
     height: 100vh;
     position: relative;
     pointer-events: none;
-    -webkit-user-select: none;
-    -ms-user-select: none;
-    -moz-user-select: none;
-    -o-user-select: none;
     user-select: none;
     float: left;
     opacity: 0;
@@ -44,13 +50,8 @@ li {
 }
 
 #heart-outline-container {
-    height: auto;
     position: fixed;
     pointer-events: none;
-    -webkit-user-select: none;
-    -ms-user-select: none;
-    -moz-user-select: none;
-    -o-user-select: none;
     user-select: none;
     top: 0;
     left: 0;
@@ -61,10 +62,6 @@ li {
     width: 100%;
     height: auto;
     pointer-events: none;
-    -webkit-user-select: none;
-    -ms-user-select: none;
-    -moz-user-select: none;
-    -o-user-select: none;
     user-select: none;
     position: relative;
     float: left;
@@ -76,33 +73,29 @@ li {
     z-index: 100;
 }
 
-#top {
-    left: 0;
-}
+#top { left: 0; }
+#bottom { left: 0; }
+#left { top: 0; }
+#right { top: 0; }
+</style>
+</head>
 
-#bottom {
-    left: 0;
-}
+<body>
 
-#left {
-    top: 0;
-}
+<div id="heart-outline-container">
+    <img id="heart-outline" src="https://i.imgur.com/AnuluF0.png">
+    <div id="top" class="bar"></div>
+    <div id="bottom" class="bar"></div>
+    <div id="left" class="bar"></div>
+    <div id="right" class="bar"></div>
+</div>
 
-#right {
-    top: 0;
-}</style>
-    <div id="heart-outline-container">
-        <img id="heart-outline" src="https://i.imgur.com/AnuluF0.png">
-        <div id="top" class="bar"></div>
-        <div id="bottom" class="bar"></div>
-        <div id="left" class="bar"></div>
-        <div id="right" class="bar"></div>
-    </div>
-    <div id="container">
-        <canvas id="c" class="clip-svg">Sorry, your browser does not support canvas.</canvas>
-    </div>
+<div id="container">
+    <canvas id="c">Sorry, your browser does not support canvas.</canvas>
+</div>
 
-    <script>window.requestAnimFrame = (function () {
+<script>
+window.requestAnimFrame = (function () {
     return window.requestAnimationFrame ||
         window.webkitRequestAnimationFrame ||
         window.mozRequestAnimationFrame ||
@@ -111,85 +104,49 @@ li {
         };
 })();
 
-const sarafiZoomPrevention = function () {
+(function () {
     document.addEventListener("touchstart", function () {}, true);
     document.documentElement.addEventListener('touchstart', function (event) {
-        if (event.touches.length > 1) {
-            event.preventDefault();
-        }
+        if (event.touches.length > 1) event.preventDefault();
     }, false);
-    var lastTouchEnd = 0;
+
+    let lastTouchEnd = 0;
     document.documentElement.addEventListener('touchend', function (event) {
-        var now = (new Date()).getTime();
-        if (now - lastTouchEnd <= 300) {
-            event.preventDefault();
-        }
+        let now = Date.now();
+        if (now - lastTouchEnd <= 300) event.preventDefault();
         lastTouchEnd = now;
     }, false);
-}
+})();
 
-sarafiZoomPrevention();
+const random = (min, max) => Math.floor(Math.random() * (max + 1 - min) + min);
 
-const raf = function (entry) {
-    window.requestAnimFrame(entry);
-};
-const caf = function (entry) {
-    window.cancelAnimationFrame(entry);
-};
-const random = function (min, max) {
-    max = max + 1;
-    return Math.floor(Math.random() * (max - min) + min);
-}
-const min = function (arr) {
-    return Math.min.apply(Math, arr);
-}
-const max = function (arr) {
-    return Math.max.apply(Math, arr);
-}
-const cl = function (entry) {
-    console.log(entry);
-}
-var container = $('#container'),
+let container = $('#container'),
     c = document.getElementById('c'),
-
     cx = c.getContext('2d'),
-    cbg = {
-        rgb: '0,0,0',
-        a: 0.01
-    },
+    cbg = { rgb: '0,0,0', a: 0.01 },
 
     heartOutlineContainer = $('#heart-outline-container'),
     heartOutline = $('#heart-outline'),
 
-    bar = $('.bar'),
     barTop = $('#top'),
     barBottom = $('#bottom'),
     barLeft = $('#left'),
     barRight = $('#right'),
 
     fps = 60,
-    now,
-    then = Date.now(),
+    now, then = Date.now(),
     interval = 1000 / fps,
     delta,
 
-    render,
-
-    Particle,
     particles = {},
     particleNum = 10,
     particleIndex = 0,
-    mouseX = null,
-    mouseY = null,
-    hueMin = 350,
-    hueMax = 400,
-    hue = hueMin,
+    hue = 350,
     hueInc = 0.5,
     rMult = 1,
-    w,
-    h,
+    w, h,
     rInc,
-    diagonalDistance = (Math.sqrt((window.innerWidth * window.innerWidth) + (window.innerHeight * window.innerHeight))),
+    diagonalDistance = Math.sqrt(window.innerWidth**2 + window.innerHeight**2),
     startingOpacity = 0,
     opacityDirection = -1,
     particlesRendered = false;
@@ -198,7 +155,7 @@ heartOutline.imagesLoaded(function () {
 
     $(window).resize(function init() {
 
-        diagonalDistance = (Math.sqrt((window.innerWidth * window.innerWidth) + (window.innerHeight * window.innerHeight)));
+        diagonalDistance = Math.sqrt(window.innerWidth**2 + window.innerHeight**2);
 
         TweenMax.set(container, {
             opacity: 1,
@@ -208,77 +165,79 @@ heartOutline.imagesLoaded(function () {
         TweenMax.set(c, {
             '-webkit-filter': `hue-rotate(${hue}deg)`
         });
+
         TweenMax.set(heartOutlineContainer, {
             width: diagonalDistance * 0.35
         });
 
         rInc = heartOutlineContainer.width() * 0.001;
+
         TweenMax.set(heartOutlineContainer, {
             y: window.innerHeight / 2 - heartOutlineContainer.height() / 2,
             x: window.innerWidth / 2 - heartOutlineContainer.width() / 2
         });
 
-        TweenMax.set(barTop, {
-            width: window.innerWidth,
-            height: window.innerHeight
-        });
+        // Bars
+        let hw = heartOutline.width() * 0.005;
 
         TweenMax.set(barTop, {
-            top: barTop.height() * -1 + heartOutline.width() * 0.005,
+            width: window.innerWidth,
+            height: window.innerHeight,
+            top: barTop.height() * -1 + hw,
             left: heartOutlineContainer.offset().left * -1
         });
 
         TweenMax.set(barBottom, {
             width: window.innerWidth,
-            height: window.innerHeight
-        });
-
-        TweenMax.set(barBottom, {
-            bottom: barBottom.height() * -1 + heartOutline.width() * 0.005,
+            height: window.innerHeight,
+            bottom: barBottom.height() * -1 + hw,
             left: heartOutlineContainer.offset().left * -1
         });
 
         TweenMax.set(barLeft, {
             width: window.innerWidth,
-            height: window.innerHeight
-        });
-
-        TweenMax.set(barLeft, {
-            left: barLeft.width() * -1 + heartOutline.width() * 0.005,
+            height: window.innerHeight,
+            left: barLeft.width() * -1 + hw,
             top: heartOutlineContainer.offset().top * -1
         });
 
         TweenMax.set(barRight, {
             width: window.innerWidth,
-            height: window.innerHeight
-        });
-
-        TweenMax.set(barRight, {
-            right: barRight.width() * -1 + heartOutline.width() * 0.005,
+            height: window.innerHeight,
+            right: barRight.width() * -1 + hw,
             top: heartOutlineContainer.offset().top * -1
         });
 
         c.width = $('#c').outerWidth();
         c.height = $('#c').outerHeight();
 
-        w = c.width,
-            h = c.height;
+        w = c.width;
+        h = c.height;
 
         cx.fillStyle = `rgba(${cbg.rgb},${cbg.a})`;
         cx.fillRect(0, 0, w, h);
 
         return init;
-    }())
-})
+    }());
+});
 
-
+// Particle system
 function drawCanvas() {
 
-    Particle = function () {
+    function Particle() {
         this.r = random(heartOutlineContainer.width() * 0.01, heartOutlineContainer.width() * 0.05) * rMult;
         this.rInc = this.r * 0.05;
-        this.x = random(heartOutlineContainer.offset().left - this.r, heartOutlineContainer.offset().left + heartOutlineContainer.width() - this.r);
-        this.y = random(heartOutlineContainer.offset().top - this.r, heartOutlineContainer.offset().top + heartOutlineContainer.height() - this.r);
+
+        this.x = random(
+            heartOutlineContainer.offset().left - this.r,
+            heartOutlineContainer.offset().left + heartOutlineContainer.width() - this.r
+        );
+
+        this.y = random(
+            heartOutlineContainer.offset().top - this.r,
+            heartOutlineContainer.offset().top + heartOutlineContainer.height() - this.r
+        );
+
         this.hue = random(280, 320);
         this.saturation = 100;
         this.light = random(30, 100);
@@ -292,56 +251,38 @@ function drawCanvas() {
     }
 
     Particle.prototype.draw = function () {
-
         this.r += this.rInc;
         this.rInc *= 0.99;
 
         this.opacity -= this.opacityInc;
 
-        if (this.opacity > 1) {
-            this.opacityInc *= -1;
-        }
-
-        if (this.opacity < 0.01) {
-            delete particles[this.id];
-        }
+        if (this.opacity > 1) this.opacityInc *= -1;
+        if (this.opacity < 0.01) delete particles[this.id];
 
         cx.beginPath();
         cx.fillStyle = `hsla(${this.hue},${this.saturation}%,${this.light}%,${this.opacity})`;
         cx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
         cx.fill();
-    }
+    };
 
     function render() {
-
-        request = requestAnimFrame(render);
+        requestAnimFrame(render);
 
         now = Date.now();
         delta = now - then;
 
         if (delta > interval) {
-
             then = now - (delta % interval);
-            $(window).resize(function () {
-                c.width = $('#c').outerWidth();
-                c.height = $('#c').outerHeight();
-                w = c.width;
-                h = c.height;
-            });
+
             cx.globalCompositeOperation = 'source-over';
             cx.fillStyle = `rgba(${cbg.rgb},${cbg.a})`;
             cx.fillRect(0, 0, w, h);
+
             if (!particlesRendered) {
-                //            particlesRendered = true;
-                for (var i = 0; i < particleNum; i++) {
-                    new Particle();
-                }
+                for (let i = 0; i < particleNum; i++) new Particle();
             }
 
-
-            for (var i in particles) {
-                particles[i].draw();
-            }
+            for (let i in particles) particles[i].draw();
 
             hue += hueInc;
 
@@ -352,14 +293,15 @@ function drawCanvas() {
     }
 
     render();
-
 }
 
 drawCanvas();
 
-window.addEventListener('mousemove', mouseCoord, false);
-
-function mouseCoord(e) {
+window.addEventListener('mousemove', function (e) {
     mouseX = e.clientX;
     mouseY = e.clientY;
-}</script>
+}, false);
+</script>
+
+</body>
+</html>
