@@ -19,8 +19,7 @@
     touch-action: none;
     -webkit-user-select: none;
     user-select: none;
-    /* 100dvh keeps things correct on mobile browsers whose UI chrome
-       shows/hides and changes the viewport height */
+
     height: 100vh;
     height: 100dvh;
     width: 100vw;
@@ -106,7 +105,6 @@
 (function () {
   "use strict";
 
-  // ---- Prevent mobile pinch-zoom / double-tap-zoom without blocking normal taps ----
   document.addEventListener("gesturestart", e => e.preventDefault());
   document.addEventListener("touchmove", e => {
     if (e.scale && e.scale !== 1) e.preventDefault();
@@ -114,7 +112,6 @@
 
   const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  // ---- Element references (plain DOM, no jQuery needed) ----
   const container = document.getElementById('container');
   const canvas = document.getElementById('c');
   const ctx = canvas.getContext('2d');
@@ -128,17 +125,16 @@
     right: document.getElementById('right')
   };
 
-  // ---- Tunables ----
   const isSmallScreen = window.innerWidth < 600;
   const PARTICLES_PER_FRAME = prefersReducedMotion ? 0 : (isSmallScreen ? 5 : 12);
-  const MAX_PARTICLES = isSmallScreen ? 220 : 450; // hard cap so memory/CPU never grow unbounded
+  const MAX_PARTICLES = isSmallScreen ? 220 : 450; 
   const HUE_STEP = 0.5;
 
   let particles = [];
   let hue = 350;
-  let dpr = Math.min(window.devicePixelRatio || 1, 2); // cap DPR to protect low-power/mobile GPUs
+  let dpr = Math.min(window.devicePixelRatio || 1, 2); 
   let w = 0, h = 0;
-  let heartNaturalRatio = 1; // height / width of the source image
+  let heartNaturalRatio = 1; 
   let rafId = null;
   let running = true;
 
@@ -153,16 +149,11 @@
     heartContainer.style.width = heartWidth + 'px';
     heartContainer.style.transform = `translate(${x}px, ${y}px)`;
 
-    // Scale the name relative to the heart itself so it stays proportional
-    // at any screen size, from small phones to ultrawide monitors.
+  
     heartName.style.fontSize = Math.max(heartWidth * 0.15, 16) + 'px';
     heartName.style.letterSpacing = (heartWidth * 0.004) + 'px';
 
-    const hw = heartWidth * 0.005; // small overlap so no hairline gap shows
-
-    // Bars are positioned relative to heartContainer (their offset parent).
-    // Using the x/y we just computed avoids forced-reflow calls like
-    // jQuery's .offset(), which is both faster and avoids stale reads.
+    const hw = heartWidth * 0.005; 
     bars.top.style.width = window.innerWidth + 'px';
     bars.top.style.height = window.innerHeight + 'px';
     bars.top.style.top = (-window.innerHeight + hw) + 'px';
@@ -201,12 +192,6 @@
     canvas.width = w * dpr;
     canvas.height = h * dpr;
 
-    // IMPORTANT FIX: the original code called ctx.scale(dpr, dpr) on every
-    // resize without resetting the transform first. Each resize therefore
-    // multiplied the existing scale on top of itself, so after a couple of
-    // resizes (rotating the phone, opening dev tools, etc.) drawing became
-    // wildly mis-scaled. setTransform() replaces the matrix instead of
-    // compounding it, so the canvas stays correctly scaled forever.
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
@@ -217,7 +202,7 @@
         return;
       }
       heartImg.addEventListener('load', resolve, { once: true });
-      heartImg.addEventListener('error', resolve, { once: true }); // fail gracefully
+      heartImg.addEventListener('error', resolve, { once: true }); 
     });
   }
 
@@ -286,9 +271,7 @@
     }
 
     hue += HUE_STEP;
-    // Writing the filter every frame is the cost of this technique; skipping
-    // every other frame halves style-recalc work with no visible difference
-    // since the hue only shifts 0.5deg/frame.
+
     frame++;
     if (frame % 2 === 0) {
       canvas.style.filter = `hue-rotate(${hue}deg)`;
@@ -326,8 +309,6 @@
     spawnBurst(e.clientX, e.clientY);
   });
 
-  // Pause the animation when the tab isn't visible: saves battery on mobile
-  // and avoids a "jump" of buffered frames when the user comes back.
   document.addEventListener("visibilitychange", () => {
     running = document.visibilityState === 'visible';
   });
