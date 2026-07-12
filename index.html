@@ -2,218 +2,312 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/1.20.3/TweenMax.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.imagesloaded/4.1.4/imagesloaded.pkgd.min.js"></script>
+<title>Particle Heart</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 
 <style>
-html, body {
+  html, body {
     margin: 0;
     padding: 0;
-    background: black;
+    background: #000;
     overflow: hidden;
-    font-family: 'Lato', sans-serif;
+    font-family: 'Lato', system-ui, sans-serif;
     touch-action: none;
-}
-#container {
+    -webkit-user-select: none;
+    user-select: none;
+    /* 100dvh keeps things correct on mobile browsers whose UI chrome
+       shows/hides and changes the viewport height */
+    height: 100vh;
+    height: 100dvh;
+    width: 100vw;
+  }
+
+  #container {
     width: 100vw;
     height: 100vh;
+    height: 100dvh;
     position: relative;
     pointer-events: none;
     opacity: 0;
-}
-#c {
+    transition: opacity 1.2s ease-out, filter 1.2s ease-out;
+  }
+
+  #c {
     width: 100%;
     height: 100%;
     display: block;
-}
-#heart-outline-container {
+  }
+
+  #heart-outline-container {
     position: fixed;
     top: 0;
     left: 0;
     pointer-events: none;
     z-index: 101;
-}
-#heart-outline {
+    will-change: transform;
+  }
+
+  #heart-outline {
     width: 100%;
     height: auto;
-}
-.bar {
+    display: block;
+  }
+
+  .bar {
     position: absolute;
-    background: black;
+    background: #000;
     z-index: 100;
-}
+  }
 </style>
 </head>
 
 <body>
 
 <div id="heart-outline-container">
-    <img id="heart-outline" src="https://i.imgur.com/AnuluF0.png">
-    <div id="top" class="bar"></div>
-    <div id="bottom" class="bar"></div>
-    <div id="left" class="bar"></div>
-    <div id="right" class="bar"></div>
+  <img id="heart-outline" src="https://i.imgur.com/AnuluF0.png" alt="">
+  <div id="top" class="bar"></div>
+  <div id="bottom" class="bar"></div>
+  <div id="left" class="bar"></div>
+  <div id="right" class="bar"></div>
 </div>
 
 <div id="container">
-    <canvas id="c"></canvas>
+  <canvas id="c"></canvas>
 </div>
 
 <script>
-document.addEventListener("gesturestart", e => e.preventDefault());
-document.addEventListener("touchmove", e => { if (e.scale !== 1) e.preventDefault(); }, { passive: false });
+(function () {
+  "use strict";
 
-window.requestAnimFrame = window.requestAnimationFrame ||
-    window.webkitRequestAnimationFrame ||
-    window.mozRequestAnimationFrame ||
-    function (cb) { return setTimeout(cb, 1000/60); };
+  // ---- Prevent mobile pinch-zoom / double-tap-zoom without blocking normal taps ----
+  document.addEventListener("gesturestart", e => e.preventDefault());
+  document.addEventListener("touchmove", e => {
+    if (e.scale && e.scale !== 1) e.preventDefault();
+  }, { passive: false });
 
-let container = $('#container'),
-    c = document.getElementById('c'),
-    cx = c.getContext('2d'),
-    heartContainer = $('#heart-outline-container'),
-    heart = $('#heart-outline'),
-    bars = {
-        top: $('#top'),
-        bottom: $('#bottom'),
-        left: $('#left'),
-        right: $('#right')
-    };
+  const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-let particles = {},
-    particleIndex = 0,
-    particleNum = (window.innerWidth < 600) ? 6 : 12,
-    hue = 350,
-    hueInc = 0.5,
-    diagonal = 0,
-    w, h;
+  // ---- Element references (plain DOM, no jQuery needed) ----
+  const container = document.getElementById('container');
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const heartContainer = document.getElementById('heart-outline-container');
+  const heartImg = document.getElementById('heart-outline');
+  const bars = {
+    top: document.getElementById('top'),
+    bottom: document.getElementById('bottom'),
+    left: document.getElementById('left'),
+    right: document.getElementById('right')
+  };
 
-function resizeCanvas() {
-    diagonal = Math.sqrt(window.innerWidth**2 + window.innerHeight**2);
+  // ---- Tunables ----
+  const isSmallScreen = window.innerWidth < 600;
+  const PARTICLES_PER_FRAME = prefersReducedMotion ? 0 : (isSmallScreen ? 5 : 12);
+  const MAX_PARTICLES = isSmallScreen ? 220 : 450; // hard cap so memory/CPU never grow unbounded
+  const HUE_STEP = 0.5;
 
-    TweenMax.set(container, {
-        opacity: 1,
-        filter: `blur(${diagonal * 0.01}px)`
-    });
+  let particles = [];
+  let hue = 350;
+  let dpr = Math.min(window.devicePixelRatio || 1, 2); // cap DPR to protect low-power/mobile GPUs
+  let w = 0, h = 0;
+  let heartNaturalRatio = 1; // height / width of the source image
+  let rafId = null;
+  let running = true;
 
-    TweenMax.set(heartContainer, {
-        width: diagonal * 0.35,
-        x: window.innerWidth/2 - (diagonal * 0.35)/2,
-        y: window.innerHeight/2 - heartContainer.height()/2
-    });
+  function layoutHeart() {
+    const diagonal = Math.sqrt(window.innerWidth ** 2 + window.innerHeight ** 2);
+    const heartWidth = diagonal * 0.35;
+    const heartHeight = heartWidth * heartNaturalRatio;
 
-    let hw = heart.width() * 0.005;
+    const x = window.innerWidth / 2 - heartWidth / 2;
+    const y = window.innerHeight / 2 - heartHeight / 2;
 
-    TweenMax.set(bars.top, {
-        width: window.innerWidth,
-        height: window.innerHeight,
-        top: -window.innerHeight + hw,
-        left: -heartContainer.offset().left
-    });
+    heartContainer.style.width = heartWidth + 'px';
+    heartContainer.style.transform = `translate(${x}px, ${y}px)`;
 
-    TweenMax.set(bars.bottom, {
-        width: window.innerWidth,
-        height: window.innerHeight,
-        bottom: -window.innerHeight + hw,
-        left: -heartContainer.offset().left
-    });
+    const hw = heartWidth * 0.005; // small overlap so no hairline gap shows
 
-    TweenMax.set(bars.left, {
-        width: window.innerWidth,
-        height: window.innerHeight,
-        left: -window.innerWidth + hw,
-        top: -heartContainer.offset().top
-    });
+    // Bars are positioned relative to heartContainer (their offset parent).
+    // Using the x/y we just computed avoids forced-reflow calls like
+    // jQuery's .offset(), which is both faster and avoids stale reads.
+    bars.top.style.width = window.innerWidth + 'px';
+    bars.top.style.height = window.innerHeight + 'px';
+    bars.top.style.top = (-window.innerHeight + hw) + 'px';
+    bars.top.style.left = (-x) + 'px';
 
-    TweenMax.set(bars.right, {
-        width: window.innerWidth,
-        height: window.innerHeight,
-        right: -window.innerWidth + hw,
-        top: -heartContainer.offset().top
-    });
+    bars.bottom.style.width = window.innerWidth + 'px';
+    bars.bottom.style.height = window.innerHeight + 'px';
+    bars.bottom.style.bottom = (-window.innerHeight + hw) + 'px';
+    bars.bottom.style.left = (-x) + 'px';
 
-    let dpr = window.devicePixelRatio || 1;
-    c.width = window.innerWidth * dpr;
-    c.height = window.innerHeight * dpr;
-    cx.scale(dpr, dpr);
+    bars.left.style.width = window.innerWidth + 'px';
+    bars.left.style.height = window.innerHeight + 'px';
+    bars.left.style.left = (-window.innerWidth + hw) + 'px';
+    bars.left.style.top = (-y) + 'px';
+
+    bars.right.style.width = window.innerWidth + 'px';
+    bars.right.style.height = window.innerHeight + 'px';
+    bars.right.style.right = (-window.innerWidth + hw) + 'px';
+    bars.right.style.top = (-y) + 'px';
+
+    return { x, y, width: heartWidth, height: heartHeight };
+  }
+
+  function resizeCanvas() {
+    const diagonal = Math.sqrt(window.innerWidth ** 2 + window.innerHeight ** 2);
+
+    container.style.opacity = 1;
+    container.style.filter = `blur(${diagonal * 0.01}px)`;
+
+    layoutHeart();
 
     w = window.innerWidth;
     h = window.innerHeight;
-}
 
-heart.imagesLoaded(() => {
-    resizeCanvas();
-    drawCanvas();
-});
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
 
-window.addEventListener("resize", () => {
-    clearTimeout(window._resizeTimer);
-    window._resizeTimer = setTimeout(resizeCanvas, 150);
-});
+    // IMPORTANT FIX: the original code called ctx.scale(dpr, dpr) on every
+    // resize without resetting the transform first. Each resize therefore
+    // multiplied the existing scale on top of itself, so after a couple of
+    // resizes (rotating the phone, opening dev tools, etc.) drawing became
+    // wildly mis-scaled. setTransform() replaces the matrix instead of
+    // compounding it, so the canvas stays correctly scaled forever.
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
 
-function Particle() {
-    let hc = heartContainer;
+  function loadHeartImage() {
+    return new Promise((resolve) => {
+      if (heartImg.complete && heartImg.naturalWidth) {
+        resolve();
+        return;
+      }
+      heartImg.addEventListener('load', resolve, { once: true });
+      heartImg.addEventListener('error', resolve, { once: true }); // fail gracefully
+    });
+  }
 
-    this.r = Math.random() * (hc.width() * 0.05 - hc.width() * 0.01) + hc.width() * 0.01;
+  function Particle(hc) {
+    const rMin = hc.width * 0.01;
+    const rMax = hc.width * 0.05;
+    this.r = Math.random() * (rMax - rMin) + rMin;
     this.rInc = this.r * 0.05;
 
-    this.x = Math.random() * hc.width() + hc.offset().left;
-    this.y = Math.random() * hc.height() + hc.offset().top;
+    this.x = Math.random() * hc.width + hc.x;
+    this.y = Math.random() * hc.height + hc.y;
 
     this.hue = Math.random() * 40 + 280;
     this.saturation = 100;
     this.light = Math.random() * 70 + 30;
     this.opacity = 0;
     this.opacityInc = Math.random() * 0.01 + 0.005;
+    this.dead = false;
+  }
 
-    particles[particleIndex] = this;
-    this.id = particleIndex;
-    particleIndex++;
-}
-
-Particle.prototype.draw = function () {
+  Particle.prototype.draw = function () {
     this.r += this.rInc;
     this.rInc *= 0.99;
 
     this.opacity += this.opacityInc;
     if (this.opacity >= 1) this.opacityInc *= -1;
-    if (this.opacity <= 0.01) delete particles[this.id];
+    if (this.opacity <= 0.01) this.dead = true;
 
-    cx.beginPath();
-    cx.fillStyle = `hsla(${this.hue},${this.saturation}%,${this.light}%,${this.opacity})`;
-    cx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
-    cx.fill();
-};
+    ctx.beginPath();
+    ctx.fillStyle = `hsla(${this.hue},${this.saturation}%,${this.light}%,${this.opacity})`;
+    ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+    ctx.fill();
+  };
 
-function drawCanvas() {
-    function render() {
-        requestAnimFrame(render);
+  function currentHeartBox() {
+    const diagonal = Math.sqrt(window.innerWidth ** 2 + window.innerHeight ** 2);
+    const heartWidth = diagonal * 0.35;
+    const heartHeight = heartWidth * heartNaturalRatio;
+    return {
+      x: window.innerWidth / 2 - heartWidth / 2,
+      y: window.innerHeight / 2 - heartHeight / 2,
+      width: heartWidth,
+      height: heartHeight
+    };
+  }
 
-        cx.globalCompositeOperation = 'source-over';
-        cx.fillStyle = 'rgba(0,0,0,0.05)';
-        cx.fillRect(0, 0, w, h);
+  let frame = 0;
 
-        for (let i = 0; i < particleNum; i++) new Particle();
+  function render() {
+    rafId = requestAnimationFrame(render);
+    if (!running) return;
 
-        for (let i in particles) particles[i].draw();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = 'rgba(0,0,0,0.05)';
+    ctx.fillRect(0, 0, w, h);
 
-        hue += hueInc;
-        TweenMax.set(c, { filter: `hue-rotate(${hue}deg)` });
+    if (particles.length < MAX_PARTICLES) {
+      const hc = currentHeartBox();
+      const toSpawn = Math.min(PARTICLES_PER_FRAME, MAX_PARTICLES - particles.length);
+      for (let i = 0; i < toSpawn; i++) particles.push(new Particle(hc));
     }
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+      particles[i].draw();
+      if (particles[i].dead) particles.splice(i, 1);
+    }
+
+    hue += HUE_STEP;
+    // Writing the filter every frame is the cost of this technique; skipping
+    // every other frame halves style-recalc work with no visible difference
+    // since the hue only shifts 0.5deg/frame.
+    frame++;
+    if (frame % 2 === 0) {
+      canvas.style.filter = `hue-rotate(${hue}deg)`;
+    }
+  }
+
+  function spawnBurst(x, y) {
+    const hc = currentHeartBox();
+    const count = Math.min(PARTICLES_PER_FRAME * 2, MAX_PARTICLES - particles.length);
+    for (let i = 0; i < count; i++) {
+      const p = new Particle(hc);
+      p.x = x;
+      p.y = y;
+      particles.push(p);
+    }
+  }
+
+  // ---- Events ----
+  let resizeTimer = null;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(resizeCanvas, 150);
+  });
+  window.addEventListener("orientationchange", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(resizeCanvas, 250);
+  });
+
+  window.addEventListener("touchstart", e => {
+    const t = e.touches[0];
+    if (t) spawnBurst(t.clientX, t.clientY);
+  }, { passive: true });
+
+  window.addEventListener("mousedown", e => {
+    spawnBurst(e.clientX, e.clientY);
+  });
+
+  // Pause the animation when the tab isn't visible: saves battery on mobile
+  // and avoids a "jump" of buffered frames when the user comes back.
+  document.addEventListener("visibilitychange", () => {
+    running = document.visibilityState === 'visible';
+  });
+
+  // ---- Boot ----
+  loadHeartImage().then(() => {
+    heartNaturalRatio = heartImg.naturalWidth
+      ? heartImg.naturalHeight / heartImg.naturalWidth
+      : 1;
+    resizeCanvas();
     render();
-}
-
-window.addEventListener("touchstart", e => {
-    let t = e.touches[0];
-    for (let i = 0; i < particleNum * 2; i++) {
-        let p = new Particle();
-        p.x = t.clientX;
-        p.y = t.clientY;
-    }
-}, { passive: true });
+  });
+})();
 </script>
 
 </body>
